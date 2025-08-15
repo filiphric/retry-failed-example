@@ -1,0 +1,46 @@
+name: End-to-end tests with retry
+on: 
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  cypress-run:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Download failed tests artifact if this is a retry attempt
+      - name: Download failed tests
+        if: github.run_attempt != '1'
+        uses: actions/download-artifact@v4
+        id: failed-specs
+        with:
+          name: failed-specs
+          path: ./cypress/test-results
+
+      # Get failed specs for retry attempts
+      - name: Get failed specs
+        if: github.run_attempt != '1'
+        run: echo "specs=$(cat cypress/test-results/failed-specs)" >> $GITHUB_ENV
+
+      # Install npm dependencies, cache them correctly
+      # and run all Cypress tests
+      - name: Cypress run
+        uses: cypress-io/github-action@v6
+        with:
+          spec: ${{ env.specs || 'cypress/e2e/**/*.cy.{js,ts}' }}
+          browser: chrome
+          record: false
+          parallel: false
+
+      # Upload failed tests for potential retry
+      - name: Upload failed tests
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: failed-specs
+          path: ./cypress/test-results
+          if-no-files-found: ignore
